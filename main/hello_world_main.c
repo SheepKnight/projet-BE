@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include <sys/param.h>
+#include "driver/gpio.h"
 
 #include "lwip/err.h"
 #include "lwip/sys.h"
