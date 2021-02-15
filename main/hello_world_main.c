@@ -28,6 +28,8 @@
 #define EXAMPLE_ESP_WIFI_CHANNEL   9
 #define EXAMPLE_MAX_STA_CONN       4
 
+#define BLINK_GPIO 21
+
 static const char *TAG = "wifi softAP";
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
@@ -164,6 +166,63 @@ static const httpd_uri_t hello = {
     .user_ctx  = "Hello World!"
 };
 
+
+static esp_err_t led_on_get_handler(httpd_req_t *req)
+{
+    char*  buf;
+    size_t buf_len;
+
+    gpio_set_level(BLINK_GPIO, 1);
+    /* Send response with custom headers and body set as the
+     * string passed in user context*/
+    const char* resp_str = (const char*) req->user_ctx;
+    httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
+
+    /* After sending the HTTP response the old HTTP request
+     * headers are lost. Check if HTTP request headers can be read now. */
+    if (httpd_req_get_hdr_value_len(req, "Host") == 0) {
+        ESP_LOGI(TAG, "Request headers lost");
+    }
+    return ESP_OK;
+}
+
+static const httpd_uri_t led_on = {
+    .uri       = "/led_on",
+    .method    = HTTP_GET,
+    .handler   = led_on_get_handler,
+    /* Let's pass response string in user
+     * context to demonstrate it's usage */
+    .user_ctx  = "ON !"
+};
+
+static esp_err_t led_off_get_handler(httpd_req_t *req)
+{
+    char*  buf;
+    size_t buf_len;
+	gpio_set_level(BLINK_GPIO, 0);
+    
+    /* Send response with custom headers and body set as the
+     * string passed in user context*/
+    const char* resp_str = (const char*) req->user_ctx;
+    httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
+
+    /* After sending the HTTP response the old HTTP request
+     * headers are lost. Check if HTTP request headers can be read now. */
+    if (httpd_req_get_hdr_value_len(req, "Host") == 0) {
+        ESP_LOGI(TAG, "Request headers lost");
+    }
+    return ESP_OK;
+}
+
+static const httpd_uri_t led_off = {
+    .uri       = "/led_off",
+    .method    = HTTP_GET,
+    .handler   = led_off_get_handler,
+    /* Let's pass response string in user
+     * context to demonstrate it's usage */
+    .user_ctx  = "OFF !"
+};
+
 /* An HTTP POST handler */
 static esp_err_t echo_post_handler(httpd_req_t *req)
 {
@@ -238,6 +297,8 @@ static esp_err_t ctrl_put_handler(httpd_req_t *req)
         /* URI handlers can be unregistered using the uri string */
         ESP_LOGI(TAG, "Unregistering /hello and /echo URIs");
         httpd_unregister_uri(req->handle, "/hello");
+        httpd_unregister_uri(req->handle, "/led_on");
+		httpd_unregister_uri(req->handle, "/led_off");
         httpd_unregister_uri(req->handle, "/echo");
         /* Register the custom error handler */
         httpd_register_err_handler(req->handle, HTTPD_404_NOT_FOUND, http_404_error_handler);
@@ -245,7 +306,9 @@ static esp_err_t ctrl_put_handler(httpd_req_t *req)
     else {
         ESP_LOGI(TAG, "Registering /hello and /echo URIs");
         httpd_register_uri_handler(req->handle, &hello);
-        httpd_register_uri_handler(req->handle, &echo);
+		httpd_register_uri_handler(req->handle, &led_on);
+		httpd_register_uri_handler(req->handle, &led_off);
+		httpd_register_uri_handler(req->handle, &echo);
         /* Unregister custom error handler */
         httpd_register_err_handler(req->handle, HTTPD_404_NOT_FOUND, NULL);
     }
@@ -274,6 +337,8 @@ static httpd_handle_t start_webserver(void)
         // Set URI handlers
         ESP_LOGI(TAG, "Registering URI handlers");
         httpd_register_uri_handler(server, &hello);
+        httpd_register_uri_handler(server, &led_on);
+        httpd_register_uri_handler(server, &led_off);
         httpd_register_uri_handler(server, &echo);
         httpd_register_uri_handler(server, &ctrl);
         return server;
@@ -314,6 +379,11 @@ static void connect_handler(void* arg, esp_event_base_t event_base,
 
 void app_main(void)
 {
+	
+	 gpio_reset_pin(BLINK_GPIO);
+    /* Set the GPIO as a push/pull output */
+    gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
+	
 	static httpd_handle_t server = NULL;
 
     //Initialize NVS
