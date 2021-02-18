@@ -29,7 +29,221 @@
 #define EXAMPLE_ESP_WIFI_CHANNEL   9
 #define EXAMPLE_MAX_STA_CONN       4
 
-#define BLINK_GPIO 21
+
+#define NAND_BUS_0 3 //Bus Pins
+#define NAND_BUS_1 4
+#define NAND_BUS_2 5
+#define NAND_BUS_3 6
+#define NAND_BUS_4 7
+#define NAND_BUS_5 8
+#define NAND_BUS_6 9
+#define NAND_BUS_7 10
+
+#define NAND_WRITE_PROTECT 11  //
+#define NAND_WRITE_ENABLE 12
+#define NAND_ADDR_LATCH 16  //Adress latch
+#define NAND_CMD_LATCH 17
+#define NAND_READ_ENABLE 34
+
+#define NAND_CHIP_ENABLE 33
+#define NAND_CHIP_ENABLE_2 36
+#define NAND_READY 37
+#define NAND_READY_2 35
+
+
+#define LED_PIN 21
+
+
+int NAND_BITS[8] = {NAND_BUS_0, NAND_BUS_1, NAND_BUS_2, NAND_BUS_3, NAND_BUS_4, NAND_BUS_5, NAND_BUS_6, NAND_BUS_7};
+
+
+void setDataBusOut(){
+	
+	for(int i = 0; i < 8; i++){
+		gpio_set_direction(NAND_BITS[i], GPIO_MODE_OUTPUT);
+	}
+	vTaskDelay(100 / portTICK_PERIOD_MS);
+	
+}
+
+void setDataBusIn(){
+	for(int i = 0; i < 8; i++){
+		gpio_set_direction(NAND_BITS[i], GPIO_MODE_INPUT);
+	}
+	vTaskDelay(100 / portTICK_PERIOD_MS);
+	
+}
+
+void writeDataBus(char val){
+	gpio_set_level(LED_PIN, 1);
+    
+	for(int i = 0; i < 8; i++){
+		gpio_set_level(NAND_BITS[i], (val& (0x1<<i)) ? 1:0 );
+	}
+	
+	gpio_set_level(LED_PIN, 0);
+    
+}
+
+char readDataBus(){
+	gpio_set_level(LED_PIN, 1);
+    
+	vTaskDelay(100 / portTICK_PERIOD_MS);
+	char out = 0x00000000;
+	gpio_set_level(NAND_READ_ENABLE, 0);
+	
+	for(int i = 0; i < 8; i++){
+		out |= (gpio_get_level(NAND_BITS[i])<<i);
+	}
+	gpio_set_level(NAND_READ_ENABLE, 1);
+	
+	gpio_set_level(LED_PIN, 0);
+    
+	return out;
+}
+
+void toggleWE(){
+	gpio_set_level(NAND_WRITE_ENABLE, 1);
+	gpio_set_level(NAND_WRITE_ENABLE, 0);
+}
+
+void closeChip(){
+	gpio_set_level(NAND_CHIP_ENABLE, 1);
+	gpio_set_level(NAND_READ_ENABLE, 1);
+}
+
+void prepChip(){
+	gpio_set_level(NAND_ADDR_LATCH, 0);
+	gpio_set_level(NAND_READ_ENABLE, 1);
+	gpio_set_level(NAND_CMD_LATCH, 1);
+	gpio_set_level(NAND_WRITE_ENABLE, 0);
+	gpio_set_level(NAND_CHIP_ENABLE, 0);
+}
+
+void latchAddress(){
+	gpio_set_level(NAND_WRITE_ENABLE, 1);
+	gpio_set_level(NAND_ADDR_LATCH, 0);
+}
+
+void setAddress(){
+	gpio_set_level(NAND_WRITE_ENABLE, 0);
+	gpio_set_level(NAND_ADDR_LATCH, 1);
+}
+
+void latchCommand(){
+	gpio_set_level(NAND_WRITE_ENABLE, 1);
+	gpio_set_level(NAND_CMD_LATCH, 0);
+}
+
+void setCommand(){
+	gpio_set_level(NAND_CMD_LATCH, 1);
+	gpio_set_level(NAND_WRITE_ENABLE, 0);
+}
+
+void reset(){
+	gpio_set_level(NAND_CMD_LATCH, 1);
+	gpio_set_level(NAND_WRITE_ENABLE, 0);
+	gpio_set_level(NAND_CHIP_ENABLE, 0);
+	writeDataBus(0xff);
+	gpio_set_level(NAND_WRITE_ENABLE, 1);
+	gpio_set_level(NAND_CHIP_ENABLE, 1);
+	gpio_set_level(NAND_CMD_LATCH, 0);
+	vTaskDelay(500 / portTICK_PERIOD_MS);
+}
+
+//READ
+
+char *readIDNAND(){
+	setDataBusOut();
+	prepChip();
+	writeDataBus(0x90);
+	latchCommand();
+	setAddress(0x00);
+	writeDataBus(0x00);
+	latchAddress();
+	setDataBusIn();
+	char id = readDataBus();
+	char id2 = readDataBus();
+	char id3 = readDataBus();
+	char id4 = readDataBus();
+	closeChip();
+	
+	char * output = malloc(200*sizeof(char));
+	snprintf(output, 10, "%02x%02x%02x%02x:", id, id2, id3, id4);
+	if(id == 0x2c){ strcpy( output + 11, "Found myself attached to Micron");}
+	else if (id == 0x98){ strcpy( output + 11, "Found myself attached to Toshiba");}
+	else if (id == 0xec){ strcpy( output + 11, "Found myself attached to Samsung");}
+	else if (id == 0x04){ strcpy( output + 11, "Found myself attached to Fujitsu");}
+	else if (id == 0x8f){ strcpy( output + 11, "Found myself attached to National Semiconductors");}
+	else if (id == 0x07){ strcpy( output + 11, "Found myself attached to Renesas");}
+	else if (id == 0x20){ strcpy( output + 11, "Found myself attached to ST Micro");}
+	else if (id == 0xad){ strcpy( output + 11, "Found myself attached to Hynix");}
+	else if (id == 0x01){ strcpy( output + 11, "Found myself attached to AMD");}
+	else if (id == 0xc2){ strcpy( output + 11, "Found myself attached to Macronix");}
+	else{ strcpy( output + 11, "Unknown chip ID");}
+	
+	closeChip();
+	
+	return(output);
+}
+
+
+void readDATANAND(){
+
+	bool ledState = 1;
+	int pagesize = 4320;
+  
+	uint8_t low_block = 0x00;   // DQ7:0 Cycle 4
+	uint8_t high_block= 0x00;   // DQ1 and DQ 0 Cycle 5
+	bool plane = 0;             // DQ7 Cycle 3
+	uint8_t page = 0x00;        // DQ0:6 Cycle 3
+  
+	while(high_block < 0x3){
+		setDataBusOut();
+		prepChip();
+		writeDataBus(0x00);
+		latchCommand();
+
+		// Address
+		setAddress();
+		writeDataBus(0x00); // always 0 column
+		toggleWE();
+		writeDataBus(0x00); // always 0 column
+		toggleWE();
+		writeDataBus(page); // page
+		toggleWE();
+		writeDataBus(low_block); // block 
+		toggleWE();
+		writeDataBus(high_block); // block
+		latchAddress();
+		// ------------
+
+		page++;
+		if(page == 0x80){
+			page = 0;
+			// need to change this
+			plane = !plane;
+			low_block++; 
+			if(low_block == 0xFF) high_block++;
+			ledState = !ledState;
+			gpio_set_level(LED_PIN,ledState);
+		}
+		setCommand();
+		writeDataBus(0x30);
+		latchCommand();
+		setDataBusIn();
+
+		for(int i = 0; i < pagesize; i++){
+
+			readDataBus();
+		}
+	
+	}
+  
+	closeChip();
+
+}
+
 
 static const char *TAG = "wifi softAP";
 
@@ -167,13 +381,63 @@ static const httpd_uri_t hello = {
     .user_ctx  = "Hello World!"
 };
 
+static esp_err_t nand_info_get_handler(httpd_req_t *req)
+{
+    char*  buf;
+    size_t buf_len;
+
+	
+    const char* resp_str = (const char*) readIDNAND();
+    httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
+
+    /* After sending the HTTP response the old HTTP request
+     * headers are lost. Check if HTTP request headers can be read now. */
+    if (httpd_req_get_hdr_value_len(req, "Host") == 0) {
+        ESP_LOGI(TAG, "Request headers lost");
+    }
+	free(resp_str);
+    return ESP_OK;
+}
+
+static const httpd_uri_t nand_info = {
+    .uri       = "/nand_info",
+    .method    = HTTP_GET,
+    .handler   = nand_info_get_handler,
+    .user_ctx  = "ON !<br><a href=\"led_off\">OFF ?</a>"
+};
+
+static esp_err_t nand_read_get_handler(httpd_req_t *req)
+{
+    char*  buf;
+    size_t buf_len;
+
+	readDATANAND();
+    const char* resp_str = (const char*) "MAYBE ?";
+    httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
+
+    /* After sending the HTTP response the old HTTP request
+     * headers are lost. Check if HTTP request headers can be read now. */
+    if (httpd_req_get_hdr_value_len(req, "Host") == 0) {
+        ESP_LOGI(TAG, "Request headers lost");
+    }
+	free(resp_str);
+    return ESP_OK;
+}
+
+static const httpd_uri_t nand_read = {
+    .uri       = "/nand_read",
+    .method    = HTTP_GET,
+    .handler   = nand_read_get_handler,
+    .user_ctx  = "ON !<br><a href=\"led_off\">OFF ?</a>"
+};
+
 
 static esp_err_t led_on_get_handler(httpd_req_t *req)
 {
     char*  buf;
     size_t buf_len;
 
-    gpio_set_level(BLINK_GPIO, 1);
+    gpio_set_level(LED_PIN, 1);
     /* Send response with custom headers and body set as the
      * string passed in user context*/
     const char* resp_str = (const char*) req->user_ctx;
@@ -193,14 +457,14 @@ static const httpd_uri_t led_on = {
     .handler   = led_on_get_handler,
     /* Let's pass response string in user
      * context to demonstrate it's usage */
-    .user_ctx  = "ON !"
+    .user_ctx  = "ON !<br><a href=\"led_off\">OFF ?</a>"
 };
 
 static esp_err_t led_off_get_handler(httpd_req_t *req)
 {
     char*  buf;
     size_t buf_len;
-	gpio_set_level(BLINK_GPIO, 0);
+	gpio_set_level(LED_PIN, 0);
     
     /* Send response with custom headers and body set as the
      * string passed in user context*/
@@ -221,7 +485,7 @@ static const httpd_uri_t led_off = {
     .handler   = led_off_get_handler,
     /* Let's pass response string in user
      * context to demonstrate it's usage */
-    .user_ctx  = "OFF !"
+    .user_ctx  = "OFF !<br><a href=\"led_on\">ON ?</a>"
 };
 
 /* An HTTP POST handler */
@@ -298,7 +562,9 @@ static esp_err_t ctrl_put_handler(httpd_req_t *req)
         /* URI handlers can be unregistered using the uri string */
         ESP_LOGI(TAG, "Unregistering /hello and /echo URIs");
         httpd_unregister_uri(req->handle, "/hello");
-        httpd_unregister_uri(req->handle, "/led_on");
+        httpd_unregister_uri(req->handle, "/nand_info");
+        httpd_unregister_uri(req->handle, "/nand_read");
+		httpd_unregister_uri(req->handle, "/led_on");
 		httpd_unregister_uri(req->handle, "/led_off");
         httpd_unregister_uri(req->handle, "/echo");
         /* Register the custom error handler */
@@ -307,6 +573,8 @@ static esp_err_t ctrl_put_handler(httpd_req_t *req)
     else {
         ESP_LOGI(TAG, "Registering /hello and /echo URIs");
         httpd_register_uri_handler(req->handle, &hello);
+		httpd_register_uri_handler(req->handle, &nand_info);
+		httpd_register_uri_handler(req->handle, &nand_read);
 		httpd_register_uri_handler(req->handle, &led_on);
 		httpd_register_uri_handler(req->handle, &led_off);
 		httpd_register_uri_handler(req->handle, &echo);
@@ -338,6 +606,8 @@ static httpd_handle_t start_webserver(void)
         // Set URI handlers
         ESP_LOGI(TAG, "Registering URI handlers");
         httpd_register_uri_handler(server, &hello);
+        httpd_register_uri_handler(server, &nand_info);
+        httpd_register_uri_handler(server, &nand_read);
         httpd_register_uri_handler(server, &led_on);
         httpd_register_uri_handler(server, &led_off);
         httpd_register_uri_handler(server, &echo);
@@ -377,13 +647,30 @@ static void connect_handler(void* arg, esp_event_base_t event_base,
 }
 
 
-
 void app_main(void)
 {
 	
-	 gpio_reset_pin(BLINK_GPIO);
+	 gpio_reset_pin(LED_PIN);
     /* Set the GPIO as a push/pull output */
-    gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
+    gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
+	
+	gpio_set_direction(NAND_ADDR_LATCH, GPIO_MODE_OUTPUT);
+	gpio_set_direction(NAND_CHIP_ENABLE, GPIO_MODE_OUTPUT);
+	gpio_set_direction(NAND_CHIP_ENABLE_2, GPIO_MODE_OUTPUT);
+	gpio_set_direction(NAND_CMD_LATCH, GPIO_MODE_OUTPUT);
+	gpio_set_direction(NAND_READ_ENABLE, GPIO_MODE_OUTPUT);
+	gpio_set_direction(NAND_WRITE_ENABLE, GPIO_MODE_OUTPUT);
+	gpio_set_direction(NAND_WRITE_PROTECT, GPIO_MODE_OUTPUT);
+	gpio_set_direction(NAND_WRITE_PROTECT, GPIO_MODE_OUTPUT);
+	
+	gpio_set_level(NAND_CHIP_ENABLE, 1);
+	gpio_set_level(NAND_CHIP_ENABLE_2, 1);
+	gpio_set_level(NAND_WRITE_ENABLE, 1);
+	gpio_set_level(NAND_READ_ENABLE, 1);
+	gpio_set_level(NAND_CMD_LATCH, 0);
+	gpio_set_level(NAND_ADDR_LATCH, 1);
+	
+	reset();
 	
 	static httpd_handle_t server = NULL;
 
@@ -398,4 +685,19 @@ void app_main(void)
     ESP_LOGI(TAG, "ESP_WIFI_MODE_AP");
     wifi_init_softap();
 	server = start_webserver();
+	/*ESP_LOGI(TAG, "USB initialization");
+
+
+    tinyusb_config_t tusb_cfg = {
+        .descriptor = NULL,
+        .string_descriptor = NULL,
+        .external_phy = false // In the most cases you need to use a `false` value
+    };
+
+    ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
+    ESP_LOGI(TAG, "USB initialization DONE");
+
+    // Create a task for tinyusb device stack:
+    xTaskCreate(usb_device_task, "usbd", 4096, NULL, 5, NULL);
+    */
 }
