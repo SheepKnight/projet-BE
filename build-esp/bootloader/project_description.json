@@ -1,0 +1,20 @@
+{
+    "project_name":       "bootloader",
+    "project_path":       "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/bootloader/subproject",
+    "build_dir":          "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/projet-BE/build-esp/bootloader",
+    "config_file":        "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/projet-BE/sdkconfig",
+    "config_defaults":    "",
+    "app_elf":            "bootloader.elf",
+    "app_bin":            "bootloader.bin",
+    "git_revision":       "v4.2-dev-2553-g4442099d9-dirty",
+    "target":             "esp32s2",
+    "phy_data_partition": "",
+    "monitor_baud" :      "115200",
+    "monitor_toolprefix": "xtensa-esp32s2-elf-",
+    "config_environment" : {
+        "COMPONENT_KCONFIGS" : "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/efuse/Kconfig;C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/esp32s2/Kconfig;C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/esp_common/Kconfig;C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/log/Kconfig;C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/spi_flash/Kconfig",
+        "COMPONENT_KCONFIGS_PROJBUILD" : "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/bootloader/Kconfig.projbuild;C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/esptool_py/Kconfig.projbuild;C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/partition_table/Kconfig.projbuild"
+    },
+    "build_components" : [ "bootloader", "bootloader_support", "efuse", "esp32s2", "esp_common", "esp_rom", "esptool_py", "log", "main", "micro-ecc", "partition_table", "soc", "spi_flash", "xtensa", "" ],
+    "build_component_paths" : [ "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/bootloader", "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/bootloader_support", "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/efuse", "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/esp32s2", "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/esp_common", "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/esp_rom", "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/esptool_py", "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/log", "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/bootloader/subproject/main", "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/bootloader/subproject/components/micro-ecc", "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/partition_table", "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/soc", "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/spi_flash", "C:/Users/albin/OneDrive/Documents/pro/PEIP2/BE/esp-idf/components/xtensa", "" ]
+}

@@ -14,6 +14,8 @@
 #include "nvs_flash.h"
 #include <sys/param.h>
 #include "driver/gpio.h"
+#include "tinyusb.h"
+
 
 #include "lwip/err.h"
 #include "lwip/sys.h"
@@ -53,8 +55,19 @@
 
 #define LED_PIN 21
 
+static const char *TAG = "Cle_BE";
 
 int NAND_BITS[8] = {NAND_BUS_0, NAND_BUS_1, NAND_BUS_2, NAND_BUS_3, NAND_BUS_4, NAND_BUS_5, NAND_BUS_6, NAND_BUS_7};
+
+
+uint8_t isChipReady(int lun){
+	int io = (lun == 0 ? NAND_READY : NAND_READY_2);
+	return(gpio_get_level(io));
+}
+void chipEnable(int lun, int state){
+	int io = (lun == 0 ? NAND_CHIP_ENABLE : NAND_CHIP_ENABLE_2);
+	gpio_set_level(io, state);
+}
 
 
 void setDataBusOut(){
@@ -67,38 +80,34 @@ void setDataBusOut(){
 }
 
 void setDataBusIn(){
+
+	for(int i = 0; i < 8; i++){
+		gpio_reset_pin(NAND_BITS[i]);
+	}
+	vTaskDelay(100 / portTICK_PERIOD_MS);
 	for(int i = 0; i < 8; i++){
 		gpio_set_direction(NAND_BITS[i], GPIO_MODE_INPUT);
+		//gpio_set_pull_mode(NAND_BITS[i], GPIO_FLOATING);
 	}
 	vTaskDelay(100 / portTICK_PERIOD_MS);
 	
 }
 
 void writeDataBus(char val){
-	gpio_set_level(LED_PIN, 1);
-    
 	for(int i = 0; i < 8; i++){
-		gpio_set_level(NAND_BITS[i], (val& (0x1<<i)) ? 1:0 );
+		gpio_set_level(NAND_BITS[i], (val & (0b00000001<<i)) ? 1:0 );
 	}
 	
-	gpio_set_level(LED_PIN, 0);
-    
 }
 
 char readDataBus(){
-	gpio_set_level(LED_PIN, 1);
-    
-	vTaskDelay(100 / portTICK_PERIOD_MS);
-	char out = 0x00000000;
+	char out = 0b00000000;
 	gpio_set_level(NAND_READ_ENABLE, 0);
 	
 	for(int i = 0; i < 8; i++){
-		out |= (gpio_get_level(NAND_BITS[i])<<i);
+		out |= ((gpio_get_level(NAND_BITS[i])==1?1:0)<<i);
 	}
 	gpio_set_level(NAND_READ_ENABLE, 1);
-	
-	gpio_set_level(LED_PIN, 0);
-    
 	return out;
 }
 
@@ -108,7 +117,7 @@ void toggleWE(){
 }
 
 void closeChip(){
-	gpio_set_level(NAND_CHIP_ENABLE, 1);
+	chipEnable(1, 1);
 	gpio_set_level(NAND_READ_ENABLE, 1);
 }
 
@@ -117,7 +126,8 @@ void prepChip(){
 	gpio_set_level(NAND_READ_ENABLE, 1);
 	gpio_set_level(NAND_CMD_LATCH, 1);
 	gpio_set_level(NAND_WRITE_ENABLE, 0);
-	gpio_set_level(NAND_CHIP_ENABLE, 0);
+	chipEnable(1, 0);
+	
 }
 
 void latchAddress(){
@@ -143,17 +153,24 @@ void setCommand(){
 void reset(){
 	gpio_set_level(NAND_CMD_LATCH, 1);
 	gpio_set_level(NAND_WRITE_ENABLE, 0);
-	gpio_set_level(NAND_CHIP_ENABLE, 0);
+	chipEnable(1, 0);
 	writeDataBus(0xff);
 	gpio_set_level(NAND_WRITE_ENABLE, 1);
-	gpio_set_level(NAND_CHIP_ENABLE, 1);
+	chipEnable(1, 1);
 	gpio_set_level(NAND_CMD_LATCH, 0);
 	vTaskDelay(500 / portTICK_PERIOD_MS);
 }
 
+
+
 //READ
 
 char *readIDNAND(){
+	reset();
+	while(!isChipReady(1)){
+		gpio_set_level(LED_PIN, 1);
+	}
+	gpio_set_level(LED_PIN, 0);
 	setDataBusOut();
 	prepChip();
 	writeDataBus(0x90);
@@ -169,7 +186,7 @@ char *readIDNAND(){
 	closeChip();
 	
 	char * output = malloc(200*sizeof(char));
-	snprintf(output, 10, "%02x%02x%02x%02x:", id, id2, id3, id4);
+	snprintf(output, 10, "%02x%02x%02x%02x: ", id, id2, id3, id4);
 	if(id == 0x2c){ strcpy( output + 11, "Found myself attached to Micron");}
 	else if (id == 0x98){ strcpy( output + 11, "Found myself attached to Toshiba");}
 	else if (id == 0xec){ strcpy( output + 11, "Found myself attached to Samsung");}
@@ -180,7 +197,7 @@ char *readIDNAND(){
 	else if (id == 0xad){ strcpy( output + 11, "Found myself attached to Hynix");}
 	else if (id == 0x01){ strcpy( output + 11, "Found myself attached to AMD");}
 	else if (id == 0xc2){ strcpy( output + 11, "Found myself attached to Macronix");}
-	else{ strcpy( output + 11, "Unknown chip ID");}
+	else{ strcpy( output + 10, "Unknown chip ID");}
 	
 	closeChip();
 	
@@ -244,8 +261,6 @@ void readDATANAND(){
 
 }
 
-
-static const char *TAG = "wifi softAP";
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                     int32_t event_id, void* event_data)
@@ -395,7 +410,7 @@ static esp_err_t nand_info_get_handler(httpd_req_t *req)
     if (httpd_req_get_hdr_value_len(req, "Host") == 0) {
         ESP_LOGI(TAG, "Request headers lost");
     }
-	free(resp_str);
+	free((char *) resp_str);
     return ESP_OK;
 }
 
@@ -646,6 +661,14 @@ static void connect_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
+static void usb_device_task(void *param) {
+    (void)param;
+    ESP_LOGI(TAG, "USB task started");
+    while (1) {
+        tud_task(); // RTOS forever loop
+    }
+}
+
 
 void app_main(void)
 {
@@ -662,6 +685,9 @@ void app_main(void)
 	gpio_set_direction(NAND_WRITE_ENABLE, GPIO_MODE_OUTPUT);
 	gpio_set_direction(NAND_WRITE_PROTECT, GPIO_MODE_OUTPUT);
 	gpio_set_direction(NAND_WRITE_PROTECT, GPIO_MODE_OUTPUT);
+	gpio_set_direction(NAND_READY, GPIO_MODE_INPUT);
+	gpio_set_direction(NAND_READY_2, GPIO_MODE_INPUT);
+	
 	
 	gpio_set_level(NAND_CHIP_ENABLE, 1);
 	gpio_set_level(NAND_CHIP_ENABLE_2, 1);
@@ -670,7 +696,6 @@ void app_main(void)
 	gpio_set_level(NAND_CMD_LATCH, 0);
 	gpio_set_level(NAND_ADDR_LATCH, 1);
 	
-	reset();
 	
 	static httpd_handle_t server = NULL;
 
@@ -685,7 +710,7 @@ void app_main(void)
     ESP_LOGI(TAG, "ESP_WIFI_MODE_AP");
     wifi_init_softap();
 	server = start_webserver();
-	/*ESP_LOGI(TAG, "USB initialization");
+	ESP_LOGI(TAG, "USB initialization");
 
 
     tinyusb_config_t tusb_cfg = {
@@ -699,5 +724,5 @@ void app_main(void)
 
     // Create a task for tinyusb device stack:
     xTaskCreate(usb_device_task, "usbd", 4096, NULL, 5, NULL);
-    */
+    
 }
