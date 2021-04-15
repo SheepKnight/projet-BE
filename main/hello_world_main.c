@@ -22,9 +22,12 @@
 
 #include "esp_netif.h"
 #include "esp_eth.h"
+#include "nand.h"
+
 #include "protocol_examples_common.h"
 
 #include <esp_http_server.h>
+
 
 #define EXAMPLE_ESP_WIFI_SSID      "Cle_Secrete"
 #define EXAMPLE_ESP_WIFI_PASS      "BEAtrice"
@@ -32,161 +35,48 @@
 #define EXAMPLE_MAX_STA_CONN       4
 
 
-#define NAND_BUS_0 3 //Bus Pins
-#define NAND_BUS_1 4
-#define NAND_BUS_2 5
-#define NAND_BUS_3 6
-#define NAND_BUS_4 7
-#define NAND_BUS_5 8
-#define NAND_BUS_6 9
-#define NAND_BUS_7 10
-
-#define NAND_WRITE_PROTECT 11  //
-#define NAND_WRITE_ENABLE 12
-#define NAND_ADDR_LATCH 16  //Adress latch
-#define NAND_CMD_LATCH 17
-#define NAND_READ_ENABLE 34
-
-#define NAND_CHIP_ENABLE 33
-#define NAND_CHIP_ENABLE_2 36
-#define NAND_READY 37
-#define NAND_READY_2 35
-
 
 #define LED_PIN 21
 
+//gpio_num_t NAND_BITS[8] = {NAND_BUS_0, NAND_BUS_1, NAND_BUS_2, NAND_BUS_3, NAND_BUS_4, NAND_BUS_5, NAND_BUS_6, NAND_BUS_7};
+
+
+/*struct nand_interface{
+	uint8_t CE;
+	uint8_t CLE;
+	uint8_t ALE;
+	uint8_t WE;
+	uint8_t RE;
+	uint8_t WP;
+	uint8_t DATA_ORIENTATION;
+	uint8_t operation;
+}itf_standby, itf_idle, itf_command, itf_address, itf_data_in, itf_data_out, itf_write_protect;
+*/
+void blink(int t, int timed){
+	for(int i = 0; i < t; i++){
+		gpio_set_level(LED_PIN, 1);
+		vTaskDelay(timed / portTICK_PERIOD_MS);
+		gpio_set_level(LED_PIN, 0);
+		vTaskDelay(timed / portTICK_PERIOD_MS);
+	}
+	
+}
+
 static const char *TAG = "Cle_BE";
 
-int NAND_BITS[8] = {NAND_BUS_0, NAND_BUS_1, NAND_BUS_2, NAND_BUS_3, NAND_BUS_4, NAND_BUS_5, NAND_BUS_6, NAND_BUS_7};
-
-
-uint8_t isChipReady(int lun){
-	int io = (lun == 0 ? NAND_READY : NAND_READY_2);
-	return(gpio_get_level(io));
-}
-void chipEnable(int lun, int state){
-	int io = (lun == 0 ? NAND_CHIP_ENABLE : NAND_CHIP_ENABLE_2);
-	gpio_set_level(io, state);
-}
-
-
-void setDataBusOut(){
-	
-	for(int i = 0; i < 8; i++){
-		gpio_set_direction(NAND_BITS[i], GPIO_MODE_OUTPUT);
-	}
-	vTaskDelay(100 / portTICK_PERIOD_MS);
-	
-}
-
-void setDataBusIn(){
-
-	for(int i = 0; i < 8; i++){
-		gpio_reset_pin(NAND_BITS[i]);
-	}
-	vTaskDelay(100 / portTICK_PERIOD_MS);
-	for(int i = 0; i < 8; i++){
-		gpio_set_direction(NAND_BITS[i], GPIO_MODE_INPUT);
-		//gpio_set_pull_mode(NAND_BITS[i], GPIO_FLOATING);
-	}
-	vTaskDelay(100 / portTICK_PERIOD_MS);
-	
-}
-
-void writeDataBus(char val){
-	for(int i = 0; i < 8; i++){
-		gpio_set_level(NAND_BITS[i], (val & (0b00000001<<i)) ? 1:0 );
-	}
-	
-}
-
-char readDataBus(){
-	char out = 0b00000000;
-	gpio_set_level(NAND_READ_ENABLE, 0);
-	
-	for(int i = 0; i < 8; i++){
-		out |= ((gpio_get_level(NAND_BITS[i])==1?1:0)<<i);
-	}
-	gpio_set_level(NAND_READ_ENABLE, 1);
-	return out;
-}
-
-void toggleWE(){
-	gpio_set_level(NAND_WRITE_ENABLE, 1);
-	gpio_set_level(NAND_WRITE_ENABLE, 0);
-}
-
-void closeChip(){
-	chipEnable(1, 1);
-	gpio_set_level(NAND_READ_ENABLE, 1);
-}
-
-void prepChip(){
-	gpio_set_level(NAND_ADDR_LATCH, 0);
-	gpio_set_level(NAND_READ_ENABLE, 1);
-	gpio_set_level(NAND_CMD_LATCH, 1);
-	gpio_set_level(NAND_WRITE_ENABLE, 0);
-	chipEnable(1, 0);
-	
-}
-
-void latchAddress(){
-	gpio_set_level(NAND_WRITE_ENABLE, 1);
-	gpio_set_level(NAND_ADDR_LATCH, 0);
-}
-
-void setAddress(){
-	gpio_set_level(NAND_WRITE_ENABLE, 0);
-	gpio_set_level(NAND_ADDR_LATCH, 1);
-}
-
-void latchCommand(){
-	gpio_set_level(NAND_WRITE_ENABLE, 1);
-	gpio_set_level(NAND_CMD_LATCH, 0);
-}
-
-void setCommand(){
-	gpio_set_level(NAND_CMD_LATCH, 1);
-	gpio_set_level(NAND_WRITE_ENABLE, 0);
-}
-
-void reset(){
-	gpio_set_level(NAND_CMD_LATCH, 1);
-	gpio_set_level(NAND_WRITE_ENABLE, 0);
-	chipEnable(1, 0);
-	writeDataBus(0xff);
-	gpio_set_level(NAND_WRITE_ENABLE, 1);
-	chipEnable(1, 1);
-	gpio_set_level(NAND_CMD_LATCH, 0);
-	vTaskDelay(500 / portTICK_PERIOD_MS);
-}
-
-
-
-//READ
-
 char *readIDNAND(){
-	reset();
-	while(!isChipReady(1)){
-		gpio_set_level(LED_PIN, 1);
-	}
-	gpio_set_level(LED_PIN, 0);
-	setDataBusOut();
-	prepChip();
-	writeDataBus(0x90);
-	latchCommand();
-	setAddress(0x00);
-	writeDataBus(0x00);
-	latchAddress();
-	setDataBusIn();
-	char id = readDataBus();
-	char id2 = readDataBus();
-	char id3 = readDataBus();
-	char id4 = readDataBus();
-	closeChip();
-	
+	//blink(5, 200);
+	char * identifiant = malloc(4*sizeof(char));
+	nand_read_id(identifiant);
+	//blink(5, 100);
+	char id = identifiant[0];
+	char id2 = identifiant[1];
+	char id3 = identifiant[2];
+	char id4 = identifiant[3];
+	//blink(3, 300);
+	free(identifiant);
 	char * output = malloc(200*sizeof(char));
-	snprintf(output, 10, "%02x%02x%02x%02x: ", id, id2, id3, id4);
+	snprintf(output, 11, "%02x%02x%02x%02x: ", id, id2, id3, id4);
 	if(id == 0x2c){ strcpy( output + 11, "Found myself attached to Micron");}
 	else if (id == 0x98){ strcpy( output + 11, "Found myself attached to Toshiba");}
 	else if (id == 0xec){ strcpy( output + 11, "Found myself attached to Samsung");}
@@ -198,68 +88,11 @@ char *readIDNAND(){
 	else if (id == 0x01){ strcpy( output + 11, "Found myself attached to AMD");}
 	else if (id == 0xc2){ strcpy( output + 11, "Found myself attached to Macronix");}
 	else{ strcpy( output + 10, "Unknown chip ID");}
-	
-	closeChip();
+	//blink(5, 100);
 	
 	return(output);
 }
 
-
-void readDATANAND(){
-
-	bool ledState = 1;
-	int pagesize = 4320;
-  
-	uint8_t low_block = 0x00;   // DQ7:0 Cycle 4
-	uint8_t high_block= 0x00;   // DQ1 and DQ 0 Cycle 5
-	bool plane = 0;             // DQ7 Cycle 3
-	uint8_t page = 0x00;        // DQ0:6 Cycle 3
-  
-	while(high_block < 0x3){
-		setDataBusOut();
-		prepChip();
-		writeDataBus(0x00);
-		latchCommand();
-
-		// Address
-		setAddress();
-		writeDataBus(0x00); // always 0 column
-		toggleWE();
-		writeDataBus(0x00); // always 0 column
-		toggleWE();
-		writeDataBus(page); // page
-		toggleWE();
-		writeDataBus(low_block); // block 
-		toggleWE();
-		writeDataBus(high_block); // block
-		latchAddress();
-		// ------------
-
-		page++;
-		if(page == 0x80){
-			page = 0;
-			// need to change this
-			plane = !plane;
-			low_block++; 
-			if(low_block == 0xFF) high_block++;
-			ledState = !ledState;
-			gpio_set_level(LED_PIN,ledState);
-		}
-		setCommand();
-		writeDataBus(0x30);
-		latchCommand();
-		setDataBusIn();
-
-		for(int i = 0; i < pagesize; i++){
-
-			readDataBus();
-		}
-	
-	}
-  
-	closeChip();
-
-}
 
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
@@ -397,11 +230,7 @@ static const httpd_uri_t hello = {
 };
 
 static esp_err_t nand_info_get_handler(httpd_req_t *req)
-{
-    char*  buf;
-    size_t buf_len;
-
-	
+{	
     const char* resp_str = (const char*) readIDNAND();
     httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
 
@@ -421,37 +250,321 @@ static const httpd_uri_t nand_info = {
     .user_ctx  = "ON !<br><a href=\"led_off\">OFF ?</a>"
 };
 
-static esp_err_t nand_read_get_handler(httpd_req_t *req)
+static esp_err_t debug_nand_read_get_handler(httpd_req_t *req)
 {
-    char*  buf;
-    size_t buf_len;
+	//readDATANAND();
+	uint32_t page;
+	uint32_t offset;
+	uint32_t lun;
+	uint32_t size;
+	
+	char *buf = NULL;
+    size_t buf_len = 0;
+	buf_len = httpd_req_get_hdr_value_len(req, "page");
+	if (buf_len > 0) {
+        buf = malloc(++buf_len);
+        if (!buf) {
+            ESP_LOGE(TAG, "Failed to allocate memory of %d bytes!", buf_len);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
+            return ESP_ERR_NO_MEM;
+        }
+        /* Copy null terminated value string into buffer */
+        if (httpd_req_get_hdr_value_str(req, "page", buf, buf_len) == ESP_OK) {
+            ESP_LOGI(TAG, "page content: %s", buf);
+            page = atoi(buf);
+        } else {
+            ESP_LOGE(TAG, "Error in getting value of page");
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Error in getting value of Page");
+            free(buf);
+            return ESP_FAIL;
+        }
+        free(buf);
+    } else {
+        ESP_LOGE(TAG, "Page not found");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Page not found");
+        return ESP_ERR_NOT_FOUND;
+    }
+	
+	buf_len = httpd_req_get_hdr_value_len(req, "offset");
+	if (buf_len > 0) {
+        buf = malloc(++buf_len);
+        if (!buf) {
+            ESP_LOGE(TAG, "Failed to allocate memory of %d bytes!", buf_len);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
+            return ESP_ERR_NO_MEM;
+        }
+        /* Copy null terminated value string into buffer */
+        if (httpd_req_get_hdr_value_str(req, "offset", buf, buf_len) == ESP_OK) {
+            ESP_LOGI(TAG, "offset content: %s", buf);
+            offset = atoi(buf);
+        } else {
+            ESP_LOGE(TAG, "Error in getting value of offset");
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Error in getting value of offset");
+            free(buf);
+            return ESP_FAIL;
+        }
+        free(buf);
+    } else {
+        ESP_LOGE(TAG, "Page not found");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Page not found");
+        return ESP_ERR_NOT_FOUND;
+    }
+	
+	buf_len = httpd_req_get_hdr_value_len(req, "lun");
+	if (buf_len > 0) {
+        buf = malloc(++buf_len);
+        if (!buf) {
+            ESP_LOGE(TAG, "Failed to allocate memory of %d bytes!", buf_len);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
+            return ESP_ERR_NO_MEM;
+        }
+        /* Copy null terminated value string into buffer */
+        if (httpd_req_get_hdr_value_str(req, "lun", buf, buf_len) == ESP_OK) {
+            ESP_LOGI(TAG, "lun content: %s", buf);
+            lun = atoi(buf);
+        } else {
+            ESP_LOGE(TAG, "Error in getting value of lun");
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Error in getting value of lun");
+            free(buf);
+            return ESP_FAIL;
+        }
+        free(buf);
+    } else {
+        ESP_LOGE(TAG, "Page not found");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Page not found");
+        return ESP_ERR_NOT_FOUND;
+    }
 
-	readDATANAND();
-    const char* resp_str = (const char*) "MAYBE ?";
+	buf_len = httpd_req_get_hdr_value_len(req, "size");
+	if (buf_len > 0) {
+        buf = malloc(++buf_len);
+        if (!buf) {
+            ESP_LOGE(TAG, "Failed to allocate memory of %d bytes!", buf_len);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
+            return ESP_ERR_NO_MEM;
+        }
+        /* Copy null terminated value string into buffer */
+        if (httpd_req_get_hdr_value_str(req, "size", buf, buf_len) == ESP_OK) {
+            ESP_LOGI(TAG, "size content: %s", buf);
+            size = atoi(buf);
+        } else {
+            ESP_LOGE(TAG, "Error in getting value of lun");
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Error in getting value of size");
+            free(buf);
+            return ESP_FAIL;
+        }
+        free(buf);
+    } else {
+        ESP_LOGE(TAG, "Page not found");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Page not found");
+        return ESP_ERR_NOT_FOUND;
+    }
+	
+	
+    char* resp_str = malloc((10+size)*sizeof(char));
+	memset(resp_str, '\0', (10+size)*sizeof(char));
+	strcpy(resp_str, "Read:");
+	nand_read(lun, page, offset,  (unsigned char *)resp_str+5,  size);
+
     httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
-
+	
     /* After sending the HTTP response the old HTTP request
      * headers are lost. Check if HTTP request headers can be read now. */
     if (httpd_req_get_hdr_value_len(req, "Host") == 0) {
         ESP_LOGI(TAG, "Request headers lost");
     }
 	free(resp_str);
-    return ESP_OK;
+
+	return ESP_OK;
 }
 
-static const httpd_uri_t nand_read = {
-    .uri       = "/nand_read",
+static esp_err_t debug_nand_get_handler(httpd_req_t *req){
+	static int loop_pos = 0;
+	int block = 512;
+	int offset = 00;
+	if(loop_pos == 0){
+		nand_erase(0, block);
+		httpd_resp_send(req, "Erased.", HTTPD_RESP_USE_STRLEN);
+	
+	}
+	if(loop_pos == 1){
+		uint8_t buf[64] = "lorem ipsum dolor sit amet consectetur adipiscing elit";
+		nand_write(0, block, offset, (uint8_t*) buf, 64);
+		httpd_resp_send(req, "Wrote.", HTTPD_RESP_USE_STRLEN);
+	}
+	if(loop_pos == 2){
+		uint8_t size = 64;
+		char* resp_str = malloc((10+size)*sizeof(char));
+		memset(resp_str, '\0', (10+size)*sizeof(char));
+		strcpy(resp_str, "Read:");
+		nand_read(0, block, offset,  (unsigned char *)resp_str+5,  size);
+
+		httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
+		loop_pos = -1;
+		free(resp_str);
+	}
+    /* After sending the HTTP response the old HTTP request
+     * headers are lost. Check if HTTP request headers can be read now. */
+    if (httpd_req_get_hdr_value_len(req, "Host") == 0) {
+        ESP_LOGI(TAG, "Request headers lost");
+    }
+	loop_pos++;
+
+	return ESP_OK;
+
+}
+
+static esp_err_t debug_nand_write_get_handler(httpd_req_t *req)
+{
+	uint32_t page;
+	uint32_t offset;
+	uint32_t lun;
+	uint32_t size;
+	
+	char *buf = NULL;
+    size_t buf_len = 0;
+	buf_len = httpd_req_get_hdr_value_len(req, "page");
+	if (buf_len > 0) {
+        buf = malloc(++buf_len);
+        if (!buf) {
+            ESP_LOGE(TAG, "Failed to allocate memory of %d bytes!", buf_len);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
+            return ESP_ERR_NO_MEM;
+        }
+        /* Copy null terminated value string into buffer */
+        if (httpd_req_get_hdr_value_str(req, "page", buf, buf_len) == ESP_OK) {
+            ESP_LOGI(TAG, "page content: %s", buf);
+            page = atoi(buf);
+        } else {
+            ESP_LOGE(TAG, "Error in getting value of page");
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Error in getting value of Page");
+            free(buf);
+            return ESP_FAIL;
+        }
+        free(buf);
+    } else {
+        ESP_LOGE(TAG, "_Page not found");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "_Page not found");
+        return ESP_ERR_NOT_FOUND;
+    }
+	
+	buf_len = httpd_req_get_hdr_value_len(req, "offset");
+	if (buf_len > 0) {
+        buf = malloc(++buf_len);
+        if (!buf) {
+            ESP_LOGE(TAG, "Failed to allocate memory of %d bytes!", buf_len);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
+            return ESP_ERR_NO_MEM;
+        }
+        /* Copy null terminated value string into buffer */
+        if (httpd_req_get_hdr_value_str(req, "offset", buf, buf_len) == ESP_OK) {
+            ESP_LOGI(TAG, "offset content: %s", buf);
+            offset = atoi(buf);
+        } else {
+            ESP_LOGE(TAG, "Error in getting value of offset");
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Error in getting value of offset");
+            free(buf);
+            return ESP_FAIL;
+        }
+        free(buf);
+    } else {
+        ESP_LOGE(TAG, "_Offset not found");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "_Offset not found");
+        return ESP_ERR_NOT_FOUND;
+    }
+	
+	buf_len = httpd_req_get_hdr_value_len(req, "lun");
+	if (buf_len > 0) {
+        buf = malloc(++buf_len);
+        if (!buf) {
+            ESP_LOGE(TAG, "Failed to allocate memory of %d bytes!", buf_len);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
+            return ESP_ERR_NO_MEM;
+        }
+        /* Copy null terminated value string into buffer */
+        if (httpd_req_get_hdr_value_str(req, "lun", buf, buf_len) == ESP_OK) {
+            ESP_LOGI(TAG, "lun content: %s", buf);
+            lun = atoi(buf);
+        } else {
+            ESP_LOGE(TAG, "Error in getting value of lun");
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Error in getting value of lun");
+            free(buf);
+            return ESP_FAIL;
+        }
+        free(buf);
+    } else {
+        ESP_LOGE(TAG, "_Lun not found");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "_Lun not found");
+        return ESP_ERR_NOT_FOUND;
+    }
+
+	buf_len = httpd_req_get_hdr_value_len(req, "value");
+	if (buf_len > 0) {
+        buf = malloc(++buf_len);
+        size = atoi(buf_len);
+		if (!buf) {
+            ESP_LOGE(TAG, "Failed to allocate memory of %d bytes!", buf_len);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
+            return ESP_ERR_NO_MEM;
+        }
+        /* Copy null terminated value string into buffer */
+        if (httpd_req_get_hdr_value_str(req, "size", buf, buf_len) == ESP_OK) {
+            ESP_LOGI(TAG, "size content: %s", buf);
+			nand_write(lun, page, offset, (uint8_t*) buf, size);
+
+        } else {
+            ESP_LOGE(TAG, "Error in getting value of lun");
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Error in getting value of size");
+            free(buf);
+            return ESP_FAIL;
+        }
+        free(buf);
+    } else {
+        ESP_LOGE(TAG, "_Value not found");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "_Value not found");
+        return ESP_ERR_NOT_FOUND;
+    }
+	
+	
+    const char* resp_str = "OK.";
+	
+    httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
+	
+    /* After sending the HTTP response the old HTTP request
+     * headers are lost. Check if HTTP request headers can be read now. */
+    if (httpd_req_get_hdr_value_len(req, "Host") == 0) {
+        ESP_LOGI(TAG, "Request headers lost");
+    }
+	free(resp_str);
+
+	return ESP_OK;
+}
+static const httpd_uri_t debug_nand = {
+    .uri       = "/debug_nand",
     .method    = HTTP_GET,
-    .handler   = nand_read_get_handler,
+    .handler   = debug_nand_get_handler,
+    .user_ctx  = "ON !<br><a href=\"led_off\">OFF ?</a>"
+};
+
+
+static const httpd_uri_t debug_nand_read = {
+    .uri       = "/debug_nand_read",
+    .method    = HTTP_GET,
+    .handler   = debug_nand_read_get_handler,
+    .user_ctx  = "ON !<br><a href=\"led_off\">OFF ?</a>"
+};
+
+
+static const httpd_uri_t debug_nand_write = {
+    .uri       = "/debug_nand_write",
+    .method    = HTTP_GET,
+    .handler   = debug_nand_write_get_handler,
     .user_ctx  = "ON !<br><a href=\"led_off\">OFF ?</a>"
 };
 
 
 static esp_err_t led_on_get_handler(httpd_req_t *req)
 {
-    char*  buf;
-    size_t buf_len;
-
     gpio_set_level(LED_PIN, 1);
     /* Send response with custom headers and body set as the
      * string passed in user context*/
@@ -477,9 +590,7 @@ static const httpd_uri_t led_on = {
 
 static esp_err_t led_off_get_handler(httpd_req_t *req)
 {
-    char*  buf;
-    size_t buf_len;
-	gpio_set_level(LED_PIN, 0);
+    gpio_set_level(LED_PIN, 0);
     
     /* Send response with custom headers and body set as the
      * string passed in user context*/
@@ -578,7 +689,9 @@ static esp_err_t ctrl_put_handler(httpd_req_t *req)
         ESP_LOGI(TAG, "Unregistering /hello and /echo URIs");
         httpd_unregister_uri(req->handle, "/hello");
         httpd_unregister_uri(req->handle, "/nand_info");
-        httpd_unregister_uri(req->handle, "/nand_read");
+        httpd_unregister_uri(req->handle, "/debug_nand_read");
+		httpd_unregister_uri(req->handle, "/debug_nand_write");
+		httpd_unregister_uri(req->handle, "/debug_nand");
 		httpd_unregister_uri(req->handle, "/led_on");
 		httpd_unregister_uri(req->handle, "/led_off");
         httpd_unregister_uri(req->handle, "/echo");
@@ -589,7 +702,9 @@ static esp_err_t ctrl_put_handler(httpd_req_t *req)
         ESP_LOGI(TAG, "Registering /hello and /echo URIs");
         httpd_register_uri_handler(req->handle, &hello);
 		httpd_register_uri_handler(req->handle, &nand_info);
-		httpd_register_uri_handler(req->handle, &nand_read);
+		httpd_register_uri_handler(req->handle, &debug_nand_read);
+		httpd_register_uri_handler(req->handle, &debug_nand_write);
+		httpd_register_uri_handler(req->handle, &debug_nand);
 		httpd_register_uri_handler(req->handle, &led_on);
 		httpd_register_uri_handler(req->handle, &led_off);
 		httpd_register_uri_handler(req->handle, &echo);
@@ -622,7 +737,9 @@ static httpd_handle_t start_webserver(void)
         ESP_LOGI(TAG, "Registering URI handlers");
         httpd_register_uri_handler(server, &hello);
         httpd_register_uri_handler(server, &nand_info);
-        httpd_register_uri_handler(server, &nand_read);
+        httpd_register_uri_handler(server, &debug_nand_read);
+		httpd_register_uri_handler(server, &debug_nand_write);
+		httpd_register_uri_handler(server, &debug_nand);
         httpd_register_uri_handler(server, &led_on);
         httpd_register_uri_handler(server, &led_off);
         httpd_register_uri_handler(server, &echo);
@@ -672,31 +789,25 @@ static void usb_device_task(void *param) {
 
 void app_main(void)
 {
+	/*//Standby
+	set_itf(&itf_standby, HIGH, NOCARE, NOCARE, NOCARE, NOCARE, NOCARE, NOCARE, NOCARE);
+	//Bus Idle
+	set_itf(&itf_idle, LOW, NOCARE, NOCARE, HIGH, HIGH, NOCARE, NOCARE, NOCARE);
+	//Command input
+	set_itf(&itf_command, LOW, HIGH, LOW, RISING, HIGH, HIGH, OUTPUT, WRITING);
+	//Address input
+	set_itf(&itf_address, LOW, LOW, HIGH, RISING, HIGH, HIGH, OUTPUT, WRITING);
+	//Data input
+	set_itf(&itf_data_in, LOW, LOW, LOW, RISING, HIGH, HIGH, OUTPUT, WRITING);
+	//Data output from nand
+	set_itf(&itf_data_out, LOW, LOW, LOW, HIGH, FALLING, NOCARE, INPUT, READING);
+	//Write Protect
+	set_itf(&itf_write_protect, NOCARE, NOCARE, NOCARE, NOCARE, NOCARE, LOW, NOCARE, NOCARE);
+	*/
 	
-	 gpio_reset_pin(LED_PIN);
-    /* Set the GPIO as a push/pull output */
-    gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
+	gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
 	
-	gpio_set_direction(NAND_ADDR_LATCH, GPIO_MODE_OUTPUT);
-	gpio_set_direction(NAND_CHIP_ENABLE, GPIO_MODE_OUTPUT);
-	gpio_set_direction(NAND_CHIP_ENABLE_2, GPIO_MODE_OUTPUT);
-	gpio_set_direction(NAND_CMD_LATCH, GPIO_MODE_OUTPUT);
-	gpio_set_direction(NAND_READ_ENABLE, GPIO_MODE_OUTPUT);
-	gpio_set_direction(NAND_WRITE_ENABLE, GPIO_MODE_OUTPUT);
-	gpio_set_direction(NAND_WRITE_PROTECT, GPIO_MODE_OUTPUT);
-	gpio_set_direction(NAND_WRITE_PROTECT, GPIO_MODE_OUTPUT);
-	gpio_set_direction(NAND_READY, GPIO_MODE_INPUT);
-	gpio_set_direction(NAND_READY_2, GPIO_MODE_INPUT);
-	
-	
-	gpio_set_level(NAND_CHIP_ENABLE, 1);
-	gpio_set_level(NAND_CHIP_ENABLE_2, 1);
-	gpio_set_level(NAND_WRITE_ENABLE, 1);
-	gpio_set_level(NAND_READ_ENABLE, 1);
-	gpio_set_level(NAND_CMD_LATCH, 0);
-	gpio_set_level(NAND_ADDR_LATCH, 1);
-	
-	
+	nand_set_pins();
 	static httpd_handle_t server = NULL;
 
     //Initialize NVS
@@ -721,7 +832,8 @@ void app_main(void)
 
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
     ESP_LOGI(TAG, "USB initialization DONE");
-
+	nand_reset();
+	
     // Create a task for tinyusb device stack:
     xTaskCreate(usb_device_task, "usbd", 4096, NULL, 5, NULL);
     
