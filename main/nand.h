@@ -15,8 +15,8 @@
 
 #define NAND_WRITE_PROTECT  (gpio_num_t)11  
 #define NAND_WRITE_ENABLE  (gpio_num_t)12
-#define NAND_ADDR_LATCH  (gpio_num_t)16  //Adress latch
-#define NAND_CMD_LATCH  (gpio_num_t)17
+#define NAND_ADDR_LATCH  (gpio_num_t)13  //Adress latch
+#define NAND_CMD_LATCH  (gpio_num_t)14
 #define NAND_READ_ENABLE  (gpio_num_t)34
 
 #define NAND_CHIP_ENABLE  (gpio_num_t)33

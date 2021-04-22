@@ -38,20 +38,6 @@
 
 #define LED_PIN 21
 
-//gpio_num_t NAND_BITS[8] = {NAND_BUS_0, NAND_BUS_1, NAND_BUS_2, NAND_BUS_3, NAND_BUS_4, NAND_BUS_5, NAND_BUS_6, NAND_BUS_7};
-
-
-/*struct nand_interface{
-	uint8_t CE;
-	uint8_t CLE;
-	uint8_t ALE;
-	uint8_t WE;
-	uint8_t RE;
-	uint8_t WP;
-	uint8_t DATA_ORIENTATION;
-	uint8_t operation;
-}itf_standby, itf_idle, itf_command, itf_address, itf_data_in, itf_data_out, itf_write_protect;
-*/
 void blink(int t, int timed){
 	for(int i = 0; i < t; i++){
 		gpio_set_level(LED_PIN, 1);
@@ -789,21 +775,7 @@ static void usb_device_task(void *param) {
 
 void app_main(void)
 {
-	/*//Standby
-	set_itf(&itf_standby, HIGH, NOCARE, NOCARE, NOCARE, NOCARE, NOCARE, NOCARE, NOCARE);
-	//Bus Idle
-	set_itf(&itf_idle, LOW, NOCARE, NOCARE, HIGH, HIGH, NOCARE, NOCARE, NOCARE);
-	//Command input
-	set_itf(&itf_command, LOW, HIGH, LOW, RISING, HIGH, HIGH, OUTPUT, WRITING);
-	//Address input
-	set_itf(&itf_address, LOW, LOW, HIGH, RISING, HIGH, HIGH, OUTPUT, WRITING);
-	//Data input
-	set_itf(&itf_data_in, LOW, LOW, LOW, RISING, HIGH, HIGH, OUTPUT, WRITING);
-	//Data output from nand
-	set_itf(&itf_data_out, LOW, LOW, LOW, HIGH, FALLING, NOCARE, INPUT, READING);
-	//Write Protect
-	set_itf(&itf_write_protect, NOCARE, NOCARE, NOCARE, NOCARE, NOCARE, LOW, NOCARE, NOCARE);
-	*/
+
 	
 	gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
 	

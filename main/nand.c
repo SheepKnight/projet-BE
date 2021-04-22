@@ -3,27 +3,6 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 
-#define NAND_BUS_0  (gpio_num_t)3 //Bus Pins
-#define NAND_BUS_1  (gpio_num_t)4
-#define NAND_BUS_2  (gpio_num_t)5
-#define NAND_BUS_3  (gpio_num_t)6
-#define NAND_BUS_4  (gpio_num_t)7
-#define NAND_BUS_5  (gpio_num_t)8
-#define NAND_BUS_6  (gpio_num_t)9
-#define NAND_BUS_7  (gpio_num_t)10
-
-#define NAND_WRITE_PROTECT  (gpio_num_t)11  
-#define NAND_WRITE_ENABLE  (gpio_num_t)12
-#define NAND_ADDR_LATCH  (gpio_num_t)16  //Adress latch
-#define NAND_CMD_LATCH  (gpio_num_t)17
-#define NAND_READ_ENABLE  (gpio_num_t)34
-
-#define NAND_CHIP_ENABLE  (gpio_num_t)33
-#define NAND_CHIP_ENABLE_2  (gpio_num_t)36
-#define NAND_READY  (gpio_num_t)37
-#define NAND_READY_2  (gpio_num_t)35
-
-
 #include "nand.h"
 
 #include "esp_log.h"
@@ -78,6 +57,7 @@ void set_bus_direction(uint8_t dir){
 	for(uint8_t i = 0; i < 8; i++){
 		//gpio_reset_pin(NAND_BITS[i]);
 		gpio_set_direction(NAND_BITS[i], dir == OUTPUT ? GPIO_MODE_OUTPUT : GPIO_MODE_INPUT);
+		
 	}
 }
 
@@ -138,7 +118,9 @@ void nand_reset(){
 
 char * nand_read_id(char * values){
 	set_pins_state(itf_command, 0x90, 0);
+	vTaskDelay(3 / portTICK_PERIOD_MS);
 	set_pins_state(itf_address, 0x20, 0);
+	vTaskDelay(3 / portTICK_PERIOD_MS);
 	for(int i = 0; i < 4; i++){
 		values[i] = set_pins_state(itf_data_out, 0x00, 0);
 	}
